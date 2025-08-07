@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import logging
 
 from document_processor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_eml
-from .embedding_search import EmbeddingSearch
+from embedding_search import EmbeddingSearch
 
 load_dotenv()
 
