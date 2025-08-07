@@ -3,6 +3,8 @@ import json
 import httpx
 from dotenv import load_dotenv
 
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from llm_query_system.main import app
 
 load_dotenv()
@@ -10,7 +12,7 @@ load_dotenv()
 API_KEY = os.environ.get("API_KEY")
 
 async def main():
-    document_path = "/home/arihant/llm_query_system/Arogya Sanjeevani Policy - CIN - U10200WB1906GOI001713 1.pdf"
+    document_path = "https://hackrx.blob.core.windows.net/assets/policy.pdf?sv=2023-01-03&st=2025-07-04T09%3A11%3A24Z&se=2027-07-05T09%3A11%3A00Z&sr=b&sp=r&sig=N4a9OU0w0QXO6AOIBiu4bpl7AXvEZogeT%2FjUHNO7HzQ%3D"
     questions = [
         "What is the grace period for premium payment under the National Parivar Mediclaim Plus Policy?",
         "What is the waiting period for pre-existing diseases (PED) to be covered?",

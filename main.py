@@ -3,6 +3,8 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import os
+import httpx
+import tempfile
 import google.generativeai as genai
 from dotenv import load_dotenv
 import logging
@@ -51,20 +53,61 @@ async def run_submission(request: DocumentRequest):
     logging.info(f"Received request for document: {request.documents}")
     logging.info(f"Questions: {request.questions}")
 
-    document_path = request.documents
+    document_source = request.documents
     extracted_text = ""
+    temp_file_path = None
 
-    if not os.path.exists(document_path):
-        raise HTTPException(status_code=404, detail=f"Document not found at {document_path}")
+    try:
+        if document_source.startswith("http://") or document_source.startswith("https://"):
+            logging.info(f"Attempting to download document from URL: {document_source}")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(document_source, follow_redirects=True, timeout=30.0)
+                response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
 
-    if document_path.lower().endswith('.pdf'):
-        extracted_text = extract_text_from_pdf(document_path)
-    elif document_path.lower().endswith('.docx'):
-        extracted_text = extract_text_from_docx(document_path)
-    elif document_path.lower().endswith('.eml'):
-        extracted_text = extract_text_from_eml(document_path)
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported document type. Only PDF, DOCX, and EML are supported.")
+            # Determine file extension from URL or content type
+            file_extension = ""
+            if 'content-disposition' in response.headers:
+                cd = response.headers['content-disposition']
+                fname = cd.split('filename=')[-1].strip("'")
+                file_extension = os.path.splitext(fname)[1]
+            elif 'content-type' in response.headers:
+                content_type = response.headers['content-type']
+                if 'pdf' in content_type:
+                    file_extension = ".pdf"
+                elif 'word' in content_type or 'document' in content_type:
+                    file_extension = ".docx"
+                elif 'message/rfc822' in content_type:
+                    file_extension = ".eml"
+            
+            if not file_extension:
+                # Fallback to checking the URL path itself for an extension
+                file_extension = os.path.splitext(document_source.split('?')[0])[1]
+
+            if not file_extension:
+                raise HTTPException(status_code=400, detail="Could not determine file type from URL or headers.")
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+                temp_file.write(response.content)
+                temp_file_path = temp_file.name
+            logging.info(f"Document downloaded to temporary file: {temp_file_path}")
+            document_path_to_process = temp_file_path
+        else:
+            document_path_to_process = document_source
+            if not os.path.exists(document_path_to_process):
+                raise HTTPException(status_code=404, detail=f"Document not found at {document_path_to_process}")
+
+        if document_path_to_process.lower().endswith('.pdf'):
+            extracted_text = extract_text_from_pdf(document_path_to_process)
+        elif document_path_to_process.lower().endswith('.docx'):
+            extracted_text = extract_text_from_docx(document_path_to_process)
+        elif document_path_to_process.lower().endswith('.eml'):
+            extracted_text = extract_text_from_eml(document_path_to_process)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported document type. Only PDF, DOCX, and EML are supported.")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+            logging.info(f"Cleaned up temporary file: {temp_file_path}")
 
     if not extracted_text:
         raise HTTPException(status_code=500, detail=f"Failed to extract text from {document_path}")
