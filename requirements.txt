@@ -8,4 +8,3 @@ PyPDF2
 scikit-learn
 numpy
 python-docx
-email
